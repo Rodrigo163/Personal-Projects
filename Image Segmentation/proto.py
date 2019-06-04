@@ -11,9 +11,7 @@ import skimage.draw as draw
 import skimage.color as color
 import imageio as iio
 import scipy.ndimage as ndi
-os.getcwd()
-os.chdir("C:\Users\rodri\github\Personal-Projects\Image Segmentation")
-)
-1
-os.chdir(path)
-#im = iio.imread('masked_single_fil.png')
+# %%
+
+im = iio.imread('masked_single_fil.png')
+plt.imshow(im)
