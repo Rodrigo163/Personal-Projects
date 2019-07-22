@@ -1,0 +1,5 @@
+"0","im <- load.image('multifil.png')"
+"0","df <- as.data.frame(im)"
+"0","grayscale(im) %>% plot()"
+"2","Error in grayscale(im) : Image should have three colour channels
+"

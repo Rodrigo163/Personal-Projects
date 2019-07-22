@@ -1,0 +1,37 @@
+---
+title: "thesis_r_version"
+author: "RLPA"
+date: "22/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Set-up
+```{r}
+library(tidyverse, imager)
+```
+
+# learning imager
+```{r}
+plot(boats)
+```
+
+
+
+# Loading image
+```{r}
+im <- load.image('multifil.png')
+df <- as.data.frame(im)
+grayscale(im) %>% plot()
+```
+
+# Histogram and thresholding
+```{r}
+hist(multi_fil, main="Luminance values in microscope image")
+
+#automatic thresholding
+
+```
+
