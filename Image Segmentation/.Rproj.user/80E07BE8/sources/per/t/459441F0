@@ -1,0 +1,33 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1564159840726.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "459441F0",
+    "lastKnownWriteTime" : 8461751823095636092,
+    "last_content_update" : 1564159840726,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "705FCC5A",
+        "caption" : "edges_w2",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=edges_w2&cache_key=705FCC5A",
+        "displayedObservations" : 6067,
+        "environment" : "",
+        "expression" : "edges_w2",
+        "object" : "edges_w2",
+        "preview" : 0,
+        "totalObservations" : 6067,
+        "variables" : 3
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 7,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}

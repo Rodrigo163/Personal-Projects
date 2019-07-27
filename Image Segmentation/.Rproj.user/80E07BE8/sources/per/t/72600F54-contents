@@ -1,0 +1,812 @@
+---
+title: "data_cleaning"
+author: "RLPA"
+date: "26/6/2019"
+output: html_document
+---
+
+```{r}
+#for creating ID's
+id_maker <- function(n, reserved = "", seed = NA, nchars = NA){
+  my_let <- letters 
+  my_num <- 0:9 
+  if(is.na(seed) | !is.numeric(seed)) set.seed(as.numeric(as.POSIXlt(Sys.time())))
+  if(!is.na(seed) & is.numeric(seed)) set.seed(seed)
+  output <- replicate(n, paste(sample(c(my_let, my_num), nchars, replace=TRUE), 
+                               collapse=''))
+  rejected <- duplicated(output) | output %in% reserved |
+    substr(output, 1, 1) %in% my_num
+  while (any(rejected)) {
+    output <- output[-which(rejected)]
+    remaining <- n - length(output)
+    output <- c(output, replicate(remaining, paste(sample(c(my_let, my_num), nchars, 
+                                                          replace=TRUE), collapse="")))
+    rejected <- duplicated(output) | output %in% reserved |
+      substr(output, 1, 1) %in% my_num
+  }
+  output
+}
+```
+
+# Getting started
+```{r}
+setwd('Y:/eco_redhead/LoRDIA')
+library(tidyverse, purrr)
+df <- read.csv('Inputs/master_datafile_190408.csv', encoding = "UTF-8") #encoding = UTF-8 or something like that. encoding part to read swedish symbols. Omit for now
+df_original <-  df
+```
+
+## Understanding the dataset
+```{r}
+str(df)
+unique(df$V1_studiepopulation)
+```
+
+
+Are ID and IDNew 1-1?
+```{r}
+#rename ID column to avoid weird names
+df <- rename(df, ID = colnames(df)[1])
+
+#Checking for duplicates
+length(intersect(df$ID, df$IDNew))
+```
+At least there are no IDs that are in both columns
+
+Now to check if there are repeated IDs in the same columns we can compare their lengths against their number of unique values. 
+```{r}
+df$ID %>% 
+  unique() %>% 
+  length() == length(df$ID)
+df$IDNew %>% 
+  unique() %>% 
+  length() == length(df$IDNew)
+```
+It seems that the IDNew columns has repeated IDs. How many?
+```{r}
+length(df$IDNew) - length(unique(df$IDNew)) 
+```
+
+In order to flag them we'll order the column, look for them and once we have them check where they are in the original IDNew
+
+
+```{r}
+#NOT WORKING 
+indices <- vector()
+temp <- sort(df$IDNew) #not necessary in this case because they look already sorted, but better check
+
+for (i in 1:(length(temp)-1)) {
+  
+  if (temp[i] == temp[i+1]) {
+    indices <- c(indices, temp[i])
+  }
+}
+```
+indices is empty, so what's happening?
+
+Easier to do with duplicated() function. Checks elements one by one and returns FALSE if it's the first time it sees the element, TRUE ioc
+We'll see if the is any TRUE in our IDNew
+```{r}
+TRUE %in% duplicated(df$IDNew)
+```
+This means the previous method doesn't work and there ARE some duplicates. Now to find the TRUE indices 
+```{r}
+indices <- which(duplicated(df$IDNew) ==  TRUE, arr.ind=TRUE)
+```
+Now to create list of duplicated IDs
+```{r}
+duplicated_IDNew <- df$IDNew[indices]
+```
+And to create a df with only these values to check what they might have in common
+```{r}
+missing_IDNew <- filter(df, is.na(IDNew) == TRUE)
+head(missing_IDNew)
+```
+So the only duplicated IDNew are NA from which we don't have any other info, except for some rare points. 
+We'll delete those rows
+```{r}
+df <- filter(df, is.na(IDNew) != TRUE)
+
+#As quick check we'll look again for duplicates
+TRUE %in% duplicated(df$IDNew)
+#Good to go!
+```
+We'll make a smaller version of the dataset that only contains the columns from which we know the keys (based on the word document LoRDIA variables key)
+```{r}
+#copy of df original without the rows from the NA IDNew
+df_original_processed <- df
+```
+
+
+```{r}
+df <-  df_original_processed
+working_keys <- c('ID', 'IDNew', 'v1_eso_v67c_corr', 'v2_e_g1e_corr', 'v3_e_j1e_recode', 'v1_eso_v68b_corr', 'v2_e_g1_alldruguse', 'v3_e_j1_anydrug', 'v1_crim_ord', 'v2_crim_ord', 'v3_crim_ord', 'v3b_crim_ord', 'v2_e_famconflict', 'v2_e_famcohesion', 'v2_e_famsociability', 'NS_B', 'HA_B', 'RD_B', 'PS_B', 'SD_B', 'CO_B', 'ST_B', 'V1antalnomineringar', 'V1antalmissing', 'V1_E_NP', 'V1_E_Prnr', 'V1_E_NB', 'V1_E_Brnr', 'V1_E_NS', 'V1_E_Srnr','V1_E_Skola','V1_E_Klass', 'V2antalnomineringar', 'V2antalmissing', 'V2_E_NP', 'V2_E_Prnr', 'V2_E_NB', 'V2_E_Brnr', 'V2_E_NS', 'V2_E_Srnr','V2_E_Skola','V2_E_Klass','V3antalnomineringar', 'V3bantalnominerade', 'V3bantalmissing', 'V3_E_NP', 'V3_E_Prnr', 'V3_E_NB', 'V3_E_Brnr', 'V3_E_NS', 'V3_E_Srnr', 'V3_E_Skola','V3_E_Klass','V1_E_Kam1','V1_E_Kam2','V1_E_Kam3','V1_E_Kam4','V1_E_Kam5','V1_E_Kam6','V1_E_Kam7','V1_E_Kam8','V2_E_Kam1','V2_E_Kam2','V2_E_Kam3','V2_E_Kam4','V2_E_Kam5','V2_E_Kam6','V2_E_Kam7','V2_E_Kam8','V3_E_Kam1','V3_E_Kam2','V3_E_Kam3','V3_E_Kam4','V3_E_Kam5','V3_E_Kam6','V3_E_Kam7','V3_E_Kam8')
+
+df <- select(df, working_keys)
+df_original_processed_small <- df
+```
+
+SOLVED ISSUE
+Maybe the V3antamissing column has another name by mistake?
+```{r}
+#solving_antal <- select(df_original, contains("antal"))
+#we'll just include all V3antal related columns until we know what they mean. Added them to working_keys
+```
+
+
+
+## Creating the people table
+First, make a people table for all of the unique cases in the flat file ("/Volumes/ecology/eco_redhead/LoRDIA/database/master_datafile_190408.csv)" in "database"
+- The people table should have the individual's ID and any static information (e.g. gender)
+
+ATM we'll only create an csv file with the ID column since a quick view of the dataset shows that the Kam results used this set of ID
+```{r}
+people <- select(df, 'ID')
+#write.csv(people, 'Y:/eco_redhead/LoRDIA/database/people.csv', row.names = FALSE)
+```
+# Adding participation and school information to people table
+For waves 1 and 2 that info is in the 3rd and 4th columns of the master data file under the names V1_studiepopulation and V2_studiepopulation
+```{r}
+#participation table
+ptable <- data.frame(ID = df_original[,1], Wave1=df_original[,3], Wave2=df_original[,4])
+
+#some students have NA, let's transform them into 0s
+#as a check let's see if the number of 0s plus NA before the change is the same as the number of 0s after the change
+table(is.na(ptable))
+table(ptable==0)
+ptable[is.na(ptable)] <- 0
+table(ptable==0)
+#looks good!
+```
+Now for the 3rd wave for now we'll interpret participation as having a school.
+```{r}
+ptable$Wave3 <- df_original$V3_E_Skola
+
+#probably there is a faster way but this worked before
+test <- c(1:length(ptable$ID))
+for (i in 1:length(test)){
+  if ((ptable$Wave3[i] %>% toString() %>% nchar()) == 1 ){ #recipient has empty school field
+    test[i] <- 0 
+  } else{
+    test[i] <- 1
+  }
+}
+ptable$Wave3 <- test
+```
+
+Finally, adding schools to the people table to check if participants stayed in same school or not.
+
+```{r}
+#ptable$School1 <- df_original$V1_E_Skola
+#ptable$School2 <- df_original$V2_E_Skola
+#ptable$School3 <- df_original$V3_E_Skola
+#write.csv(ptable, 'Y:/eco_redhead/LoRDIA/database/people.csv', row.names = FALSE)
+```
+Schools have different names across and also inside waves. We need to fix that and re-run the analysis.
+
+```{r}
+#using this we can see what we're dealing with
+#table(unique(ptable$School1))
+#we see that the first 3 character are unique to every school so we can use that to classify them.
+ptable$School1 <- tolower(df_original$V1_E_Skola)
+uniq <- c("Apladalsskolan","Önnerödsskolan","Åsenhögaskolan","Åvikenskolan", "Asklanda", "Bäckaskolan", "Båtsmansskolan", "Borbackaskolan", "Bredarydsskolan", "Djupedalsskolan", "Ekdalaskolan", "Forshedaskolan", "Fridaskolan", "Fridhemskolan", "Gällaryds skola", "Gröndalsskolan", "Gullhögskolan", "Hångerskola", "Hanahöjskolan", "Hillerstorpsskolan", "Hols skola ", "Horda", "Kärda skola", "Kesberg", "Kulltorpsskolan", "Landvetterskolan", "Lena skola", "Nårunga", "Nissaforsskolan", "Rävlandaskolan", "Rydaholmskola", "Samskolan i Göteborg", "Vårberg", "Hulebäcksgymnasiet", "Skolgång hemma")
+table(unique(df_original$V1_E_Skola))
+
+#creating schoole table with full name and string ID = first 3 characters
+sctable <- tibble(fullname=uniq, short=c(rep(0, length(uniq))))
+for (i in 1:length(sctable$fullname)){
+  sctable[i,2] <- tolower(substring(sctable[i,1], 1, 3))
+}
+
+#checking if we have duplicates
+sum(duplicated(sctable$short))
+#after checking we see that the problem comes from Fridaskolan and Fridhemskolan
+#we'll name one of them differently
+sctable$short[14] <- "fridh"
+sum(duplicated(sctable$short))
+
+#reducing all school names in the people table
+#temp needed to avoid problems with NA in original file
+temp <- vector()
+
+for (i in 1:length(ptable$School1)){
+  current <- nchar(toString(ptable$School1[i]))
+  if (current == 1){
+   temp <- c(temp,0)
+  }else{
+    if ((toString(ptable$School1[i])=="fridhemskolan") | (toString(ptable$School1[i])=="fridhem") ){
+      temp <- c(temp,"fridh")
+    }else if(toString(ptable$School1[i])=="hiilerstorp"){
+      temp <- c(temp, "hil")
+    }else{
+      temp <- c(temp, substring(toString(ptable$School1[i]), 1, 3)) 
+    }
+  }
+}
+#once temp looks like we want it too we copy it to our df
+ptable$School1 <- temp
+```
+Now for waves 2 and 3
+```{r}
+ptable$School2 <- tolower(df_original$V2_E_Skola)
+table(unique(ptable$School2))
+
+
+temp <- vector()
+
+for (i in 1:length(ptable$School2)){
+  current <- nchar(toString(ptable$School2[i]))
+  if (current == 1){
+   temp <- c(temp,0)
+  }else{
+      temp <- c(temp,substring(toString(ptable$School2[i]), 1, 3))
+  }
+  
+}
+ptable$School2 <- temp
+```
+```{r}
+ptable$School3 <- tolower(df_original$V3_E_Skola)
+table(unique(ptable$School3))
+
+
+temp <- vector()
+
+for (i in 1:length(ptable$School3)){
+  current <- nchar(toString(ptable$School3[i]))
+  if (current == 1){
+   temp <- c(temp, 0)
+  }else{
+      temp <- c(temp, substring(toString(ptable$School3[i]), 1, 3))
+  }
+  
+}
+ptable$School3 <- temp
+```
+
+We realize that three school names are unique to wave 3. They start with hul, hii and sko. 
+
+```{r}
+#checking why 3rd wave has school short names that do not appear in the first wave (hul, hii, sko)
+#table(unique(df_original$V1_E_Skola))
+#table(unique(df_original$V2_E_Skola))
+#table(unique(df_original$V3_E_Skola))
+```
+Are Ã–nnerÃ¶dsskolan and Ã–nnered the same school?
+HulebÃ¤cksgymnasiet looks new from 3rd wave
+SkolgÃ¥ng hemma as well
+Hii must just be an error and is actually Hillerstorpsskolan
+
+--> Added these exceptions to the previous code
+
+Now we can map all the short names to the unique long ones and at the same time create the id table. Final step will be to replace the long school names with their corresponding ID's
+
+```{r}
+#Creating school-ID table
+school_ID <- data.frame(School=uniq, ID= id_maker(length(uniq), seed = 1, nchars = 4))
+
+#replacing school names with their IDs in the people table
+for (i in 1:length(sctable$short)){
+  for (j in 5:7){
+    for (inde in which(ptable[,j]== sctable$short[i])){
+      ptable[inde, j] <- toString(school_ID[i,2])
+    }
+  }
+}
+#SOLVED
+#this worked for most of the names, the rest we can manage manually
+#ã–n, ã…s, ã…v to 	ÃnnerÃ¶dskolan, ÃsenhÃ¶gaskolan, Ãvikenskolan
+#solved by adding encoding="UTF-8" when importing and redoing some parts of the code
+
+write.csv(ptable, 'Y:/eco_redhead/LoRDIA/database/people.csv', row.names = FALSE)
+write.csv(school_ID, 'Y:/eco_redhead/LoRDIA/database/School_ID.csv', row.names = FALSE)
+```
+
+
+
+## Creating KAM tables for each wave
+```{r}
+kam1 <- select(df,'ID', starts_with('V1_E_Kam'))
+kam2 <- select(df,'ID', starts_with('V2_E_Kam'))
+kam3 <- select(df,'ID', starts_with('V3_E_Kam'))
+write.csv(kam1, 'Y:/eco_redhead/LoRDIA/database/kam1.csv', row.names = FALSE)
+write.csv(kam2, 'Y:/eco_redhead/LoRDIA/database/kam2.csv', row.names = FALSE)
+write.csv(kam3, 'Y:/eco_redhead/LoRDIA/database/kam3.csv', row.names = FALSE)
+```
+
+## Creating KAM + school + class tables
+```{r}
+kamsc1 <- data.frame(ID=ptable$ID, V1_E_Skola=ptable$School1, V1_E_Klass=df_original$V1_E_Klass, select(df_original, starts_with('V1_E_Kam')))
+kamsc2 <- data.frame(ID=ptable$ID, V2_E_Skola=ptable$School2, V2_E_Klass=df_original$V2_E_Klass, select(df_original, starts_with('V2_E_Kam')))
+kamsc3 <- data.frame(ID=ptable$ID, V3_E_Skola=ptable$School3, V3_E_Klass=df_original$V3_E_Klass, select(df_original, starts_with('V3_E_Kam')))
+write.csv(kamsc1, 'Y:/eco_redhead/LoRDIA/database/kam_school_class1.csv', row.names = FALSE)
+write.csv(kamsc2, 'Y:/eco_redhead/LoRDIA/database/kam_school_class2.csv', row.names = FALSE)
+write.csv(kamsc3, 'Y:/eco_redhead/LoRDIA/database/kam_school_class3.csv', row.names = FALSE)
+```
+
+## Creating wave tables
+```{r}
+V1 <- select(df,'ID', contains('V1'))
+V2 <- select(df,'ID', contains('V2'))
+V3 <- select(df,'ID', contains('V3'), contains('3b'))
+write.csv(V1, 'Y:/eco_redhead/LoRDIA/database/V1.csv', row.names = FALSE)
+write.csv(V2, 'Y:/eco_redhead/LoRDIA/database/V2.csv', row.names = FALSE)
+write.csv(V3, 'Y:/eco_redhead/LoRDIA/database/V3.csv', row.names = FALSE)
+```
+
+
+## Checking how many nominations happened between schools and keeping count of how many times each ID was nominated
+First we'll create column by column the checks. 0 if the person nominated someone from their own school, 1 if they nominated someone from another school. 2 if the nominated person has no school (NA). 0.5 means nomination in same classroom (same school of course)
+
+SOLVED
+For prototyping we'll work on a small version of the dataset (around 10% of the total size)
+
+```{r}
+#sample_school_check1 <- kamsc1[sample(nrow(df), 180) , ]
+```
+
+```{r}
+# check <- matrix(0, length(sample_school_check1$ID), 8)
+# popularity_count <- matrix(0, length(sample_school_check1$ID), 1)
+# 
+# for (i in 1:length(sample_school_check1$ID)){#For each ID
+#   for (j in 1:8){ #for each kam column
+#     recipient <- sample_school_check1[i,j +3]
+#     if (recipient %in% c(10,11,12)){ #handle special cases
+#       check[i,j] <- recipient
+#     }else if(is.na(sample_school_check1$V1_E_Skola[recipient])){ #handle recipient has NA in school
+#       check[i,j] <- 2
+#     }else if(sample_school_check1$V1_E_Skola[recipient] != sample_school_check1$V1_E_Skola[i]){ #check if same school
+#       check[i,j] <- 1
+#     }
+#   }
+# }
+```
+Weird thing is that it looks like no one nominated people from the same school! -> SOLVED
+
+Let's do this for the whole dataset.
+Since it seems to workout we also added the intra-classroom check data
+```{r}
+school_check1 <- kamsc1 #keeping original data intact in case something goes wrong
+n <- length(school_check1$ID)
+
+check1 <- data.frame(matrix(0, n, 8)) #initializing check matrix
+colnames(check1) <-  colnames(school_check1[, 4:11])
+popularity_count <- c(rep(0,n)) #init. popularity vector
+
+for (i in 1:n){#For each ID
+  for (j in 1:8){ #for each kam column
+    recipient <- school_check1[i,j+3]
+    if(recipient %in% 10:12){ #handle special cases 10, 11, 12
+      check1[i,j] <- recipient
+    }else{
+      index_recipient <- which(school_check1$ID == recipient)
+      if (!length(index_recipient) ){ #recipient not found
+        check1[i,j] <- 777
+      } else{
+        popularity_count[i] <- popularity_count[i] + 1
+        if ((school_check1$V1_E_Skola[index_recipient] %>% toString() %>% nchar()) == 1 ){ #recipient has empty school field
+          check1[i,j] <- 2
+        } else{
+          if (school_check1$V1_E_Skola[index_recipient] != school_check1$V1_E_Skola[i]){ #both have schools but they're different
+            check1[i,j] <- 1
+          }
+          if (school_check1$V1_E_Klass[index_recipient] == school_check1$V1_E_Klass[i]){ #same school and same classroom
+            check1[i,j] <- 0.5
+          }
+        }
+      
+      }
+      
+    }
+  }
+}
+check1$ID <- school_check1$ID
+check1$nNominated <- popularity_count
+check1 <- check1[, c(9,10,1,2,3,4,5,6,7,8)]
+
+
+#making summary of results
+# ask for better way to do so!
+total <- 8*n #number of total observation
+
+#adding 1s to subtract them later. This allows table method to work
+check1[7,5:10] <- c(rep(1,6))
+current_table <- table(check1[,3])
+for (i in 4:10){
+  current_table <- current_table + table(check1[,i])
+}
+current_table <- (current_table/total)*100
+summary1 <- data.frame(current_table)
+colnames(summary1) <- c("Nomination type", "Percentage")
+
+#only counting 0s and 1s
+summary1$Only_Counting_0_1 <- c("% of 0s", "% of 1s", rep(NA, 6))
+tot_0_1 <- sum(check1==1, check1==0, check1==0.5)-6 #to account for the added ones
+summary1$n <- c((sum(check1==0)+ sum(check1==0.5))/tot_0_1*100, (sum(check1==1)-6)/tot_0_1*100, rep(NA, 6))
+
+#Counting how many of the in-school nominations are also bet same classrooms
+summary1$From_0s_inSameClass <- c("% of nominations staying in same classroom", "% of nominations outside classroom", rep(NA, 6))
+tot_0_05 <- sum(check1==0.5, check1==0)
+summary1$N <- c(sum(check1==0)/tot_0_05*100, sum(check1==0.5)/tot_0_05*100, rep(NA, 6))
+
+#saving final files
+#write.csv(check1, 'Y:/eco_redhead/LoRDIA/database/Check_bet_schools1.csv', row.names = FALSE)
+write.csv(summary1, 'Y:/eco_redhead/LoRDIA/database/Summary_check1.csv', row.names = FALSE)
+```
+All looks good. 
+Now for the 2nd and 3rd waves
+
+```{r}
+school_check2 <- kamsc2
+n <- length(school_check2$ID)
+check2 <- data.frame(matrix(0, n, 8))
+colnames(check2) <-  colnames(school_check2[, 4:11])
+popularity_count <- c(rep(0,n))
+
+for (i in 1:n){#For each ID
+  for (j in 1:8){ #for each kam column
+    recipient <- school_check2[i,j +3]
+    if(recipient %in% 10:12){ #handle special cases 10, 11, 12
+      check2[i,j] <- recipient
+    }else{
+      index_recipient <- which(school_check2$ID == recipient)
+      if (!length(index_recipient) ){ #recipient not found
+        check2[i,j] <- 777
+      } else{
+        popularity_count[i] <- popularity_count[i] + 1
+        if ((school_check2$V2_E_Skola[index_recipient] %>% toString() %>% nchar()) == 1 ){ #recipient has empty school field
+          check2[i,j] <- 2
+        } else{
+          if (school_check2$V2_E_Skola[index_recipient] != school_check2$V2_E_Skola[i]){ #both have schools but they're different
+            check2[i,j] <- 1
+          }
+          if (school_check2$V2_E_Klass[index_recipient] == school_check2$V2_E_Klass[i]){
+            check2[i,j] <- 0.5
+          }
+        }
+      
+      }
+      
+    }
+  }
+}
+#Assembling final table
+check2$ID <- school_check2$ID
+check2$nNominations <- popularity_count
+check2 <- check2[, c(9,10,1,2,3,4,5,6,7,8)]
+
+#making summary of results
+# ask for better way to do so!
+total <- 8*n #number of total observation)
+check2[11,4:8] <- c(rep(1,5))
+current_table <- table(check2[,3])
+for (i in 4:10){
+  current_table <- current_table + table(check2[,i])
+}
+current_table <- (current_table/total)*100 #getting percentage
+summary2 <- data.frame(current_table)
+colnames(summary2) <- c("Nomination type", "Percentage")
+
+#only counting 0s and 1s
+summary2$Only_Counting_0_1 <- c("% of 0s", "% of 1s", rep(NA, 6))
+tot_0_1 <- sum(check2==1, check2==0, check2==0.5)-5
+summary2$n <- c((sum(check2==0)+ sum(check2==0.5))/tot_0_1*100, (sum(check2==1)-5)/tot_0_1*100, rep(NA, 6))
+
+#Counting how many of the in-school nominations are also bet same classrooms
+summary2$From_0s_inSameClass <- c("% of nominations staying in same classroom", "% of nominations outside classroom", rep(NA, 6))
+tot_0_05 <- sum(check2==0.5, check2==0)
+summary2$N <- c(sum(check2==0)/tot_0_05*100, sum(check2==0.5)/tot_0_05*100, rep(NA, 6))
+
+#Saving data
+#write.csv(check2, 'Y:/eco_redhead/LoRDIA/database/Check_bet_schools2.csv', row.names = FALSE)
+write.csv(summary2, 'Y:/eco_redhead/LoRDIA/database/Summary_check2.csv', row.names = FALSE)
+```
+
+
+```{r}
+school_check3 <- kamsc3
+n <- length(school_check3$ID)
+check3 <- data.frame(matrix(0, n, 8))
+colnames(check3) <-  colnames(school_check3[, 4:11])
+popularity_count <- c(rep(0,n))
+
+for (i in 1:n){#For each ID
+  for (j in 1:8){ #for each kam column
+    recipient <- school_check3[i,j +3]
+    if(recipient %in% 10:12){ #handle special cases 10, 11, 12
+      check3[i,j] <- recipient
+    }else{
+      index_recipient <- which(school_check3$ID == recipient)
+      if (!length(index_recipient) ){ #recipient not found
+        check3[i,j] <- 777
+      } else{
+        popularity_count[i] <- popularity_count[i] + 1
+        if ((school_check3$V3_E_Skola[index_recipient] %>% toString() %>% nchar()) == 1 ){ #recipient has empty school field
+          check3[i,j] <- 2
+        } else{
+          if (school_check3$V3_E_Skola[index_recipient] != school_check3$V3_E_Skola[i]){ #both have schools but they're different
+            check3[i,j] <- 1
+          }
+          if (school_check3$V3_E_Klass[index_recipient] == school_check3$V3_E_Klass[i]){
+            check3[i,j] <- 0.5
+          }
+        }
+      
+      }
+      
+    }
+  }
+}
+#Assembling final table
+check3$ID <- school_check3$ID
+check3$nNominations <- popularity_count
+check3 <- check3[, c(9,10,1,2,3,4,5,6,7,8)]
+
+#making summary of results
+# ask for better way to do so!
+
+#taking into acc all categories
+#need to add a dummy variable for code purposes on last column. 
+
+check3[7,4:10] <- c(rep(1,7)) #will be subtracted on counting step
+check3[4,10] <- 777
+total <- 8*n #number of total observation)
+current_table <- table(check3[,3])
+for (i in 4:10){
+  current_table <- current_table + table(check3[,i])
+}
+current_table <- (current_table/total)*100 #getting percentage
+summary3 <- data.frame(current_table)
+colnames(summary3) <- c("Nomination type", "Percentage")
+
+#only counting 0s and 1s
+summary3$Only_Counting_0_1 <- c("% of 0s", "% of 1s", rep(NA, 6))
+tot_0_1 <- sum(check3==1, check3==0, check3==0.5) -7
+summary3$n <- c((sum(check3==0)+ sum(check3==0.5))/tot_0_1*100, (sum(check3==1)-7)/tot_0_1*100, rep(NA, 6))
+
+#Counting how many of the in-school nominations are also bet same classrooms
+summary3$From_0s_inSameClass <- c("% of nominations staying in same classroom", "% of nominations outside classroom", rep(NA, 6))
+tot_0_05 <- sum(check3==0.5, check3==0)
+summary3$N <- c(sum(check3==0)/tot_0_05*100, sum(check3==0.5)/tot_0_05*100, rep(NA, 6))
+
+#Saving csvs
+#write.csv(check3, 'Y:/eco_redhead/LoRDIA/database/Check_bet_schools3.csv', row.names = FALSE)
+write.csv(summary3, 'Y:/eco_redhead/LoRDIA/database/Summary_check3.csv', row.names = FALSE)
+```
+
+
+# Creating edge matrix
+```{r}
+kam <- inner_join(kam1, kam2) %>% inner_join(kam3) #joining all our kam data
+
+edges <- tibble(ID = vector(), Recipient=vector(), Wave=vector()) #init empty edge matrix
+total <- length(kam$ID)
+
+for (i in 1:total){ #checking row by row, first wave first
+  for (j in 2:9){
+    recipient <- kam[i,j]
+    if (!recipient %in% c(10,11,12)){
+      edges[nrow(edges)+1, ] = list(kam$ID[i], recipient, 1) 
+    }
+  }
+  for (j in 10:17){ #then second
+    recipient <- kam[i,j]
+    if (!recipient %in% c(10,11,12)){
+      edges[nrow(edges)+1, ] = list(kam$ID[i], recipient, 2) 
+    }
+  }
+  for (j in 18:25){ #then third    
+    if (!recipient %in% c(10,11,12)){
+      edges[nrow(edges)+1, ] = list(kam$ID[i], recipient, 3) 
+    }
+  }
+}
+write.csv(edges, 'Y:/eco_redhead/LoRDIA/database/edges.csv', row.names = FALSE)
+```
+# Creating the counter for school changes and creating table with summary
+```{r}
+#counting and creating the dataframe
+# if the student changed from w1 to w2 but then returned to previous school in w3 we only count it as one change.
+
+count_shool_changes <- c(rep(0,length(ptable$ID))) 
+for (i in 1:length(ptable$ID)){
+  if (ptable$School1[i] != ptable$School2[i]){
+    count_shool_changes[i] = count_shool_changes[i] + 1 
+  }
+  if ((ptable$School3[i] != ptable$School2[i]) && ((ptable$School3[i] != ptable$School1[i]))){
+    count_shool_changes[i] = count_shool_changes[i] + 1 
+  }
+}
+
+#doing summary
+counts <- c(sum(count_shool_changes==0)/length(ptable$ID)*100,sum(count_shool_changes==1)/length(ptable$ID)*100, sum(count_shool_changes==2)/length(ptable$ID)*100)
+
+
+#saving data in final table
+School_changes <- data.frame(ID = ptable$ID, n_school_changes = count_shool_changes, Summary = c(c('Never changed school', 'Changed school once', 'Changed school twice'), rep('-',length(ptable$ID)-3 )), Percentages = c( counts, rep('-',length(ptable$ID)-3)))
+
+write.csv(School_changes, 'Y:/eco_redhead/LoRDIA/database/School_changes.csv', row.names = FALSE)
+```
+# To check why so many school changes
+```{r}
+test <- filter(School_changes, School_changes$n_school_changes == 2)
+test <- test$ID
+ptable[sapply(test, function(x) which(ptable$ID == x)), 5:7]
+```
+I can't find any evident pattern that explains it
+
+
+#Creating matrices with igraph per classroom, per wave
+```{r}
+#first, dividing in waves
+edges_w1 <- filter(edges, Wave==1)
+edges_w2 <- filter(edges, Wave==2)
+edges_w3 <- filter(edges, Wave==3)
+
+#getting a list of schools present in wave 1 and their IDs
+school_ID_copyw1 <- filter(school_ID, ID %in% unique(ptable$School1) )
+#now dividing by schools
+#Each element of this list will be a list with the edges per school
+edges_per_school_w1 <- list()
+
+#adding a zero to not have an empty list
+for (i in 1:length(school_ID_copyw1$School)){
+  edges_per_school_w1[[i]] <- c(0)
+}
+#looking for school of ID and recipient. If they both have schools and they match, add the edge to the corresponding list.
+for (i in 1:length(edges_w1$ID)){
+   school.ID <- ptable$School1[which(ptable$ID == edges_w1$ID[i])]
+   school.recipient <- ptable$School1[which(ptable$ID == edges_w1$Recipient[i])]
+   if ((length(school.ID) != 0) && (length(school.recipient) != 0) && (school.ID == school.recipient)){
+     sch <- which(school_ID_copyw1$ID == school.ID)
+     edges_per_school_w1[[sch]] <- append(edges_per_school_w1[[sch]], list(c(edges_w1$ID[i], edges_w1$Recipient[i])))
+   }
+}
+
+#removing the 0
+for (i in 1:length(school_ID_copyw1$School)){
+  edges_per_school_w1[[i]] <- edges_per_school_w1[[i]][-1]
+}
+
+#now creating a dataframe for each school
+for (i in 1:31){
+  school_name <- school_ID_copyw1$ID[i]
+  aux1 <- vector()
+  aux2 <- vector()
+  for (j in 1:length(edges_per_school_w1[[i]])){
+    aux1 <- c(aux1, toString(edges_per_school_w1[[1]][[j]][1]))
+    aux2 <- c(aux2, toString(edges_per_school_w1[[1]][[j]][2]))
+  }
+  
+  matrixaux <- matrix(c(aux1, aux2), ncol=2)
+  
+  file_name <- paste("Wave1_", school_name, sep='')
+  network <- graph_from_edgelist(matrixaux, directed = TRUE)
+  m <- as.data.frame(get.adjacency(network, sparse = FALSE))
+  
+  write.csv(m, paste('Y:/eco_redhead/LoRDIA/database/networks/',file_name,'.csv', sep=''), row.names = TRUE)
+}
+for (i in 33:33){
+  school_name <- school_ID_copyw1$ID[i]
+  aux1 <- vector()
+  aux2 <- vector()
+  for (j in 1:length(edges_per_school_w1[[i]])){
+    aux1 <- c(aux1, toString(edges_per_school_w1[[i]][[j]][1]))
+    aux2 <- c(aux2, toString(edges_per_school_w1[[i]][[j]][2]))
+  }
+  
+  matrixaux <- matrix(c(aux1, aux2), ncol=2)
+  
+  file_name <- paste("Wave1_", school_name, sep='')
+  network <- graph_from_edgelist(matrixaux, directed = TRUE)
+  m <- as.data.frame(get.adjacency(network, sparse = FALSE))
+  
+  write.csv(m, paste('Y:/eco_redhead/LoRDIA/database/networks/',file_name,'.csv', sep=''), row.names = TRUE)
+}
+
+#after doing this school by school we see that there are no edges going to school d7kv and that is why the program does not run properly for i=32. We skip that case.
+
+```
+
+
+Now for wave 2
+```{r}
+#getting a list of schools present in wave 1 and their IDs
+school_ID_copyw2 <- filter(school_ID, ID %in% unique(ptable$School2) )
+#now dividing by schools
+#Each element of this list will be a list with the edges per school
+edges_per_school_w2 <- list()
+
+#adding a zero to not have an empty list
+for (i in 1:length(school_ID_copyw2$School)){
+  edges_per_school_w2[[i]] <- c(0)
+}
+#looking for school of ID and recipient. If they both have schools and they match, add the edge to the corresponding list.
+for (i in 1:length(edges_w2$ID)){
+   school.ID <- ptable$School2[which(ptable$ID == edges_w2$ID[i])]
+   school.recipient <- ptable$School2[which(ptable$ID == edges_w2$Recipient[i])]
+   if ((length(school.ID) != 0) && (length(school.recipient) != 0) && (school.ID == school.recipient)){
+     sch <- which(school_ID_copyw2$ID == school.ID)
+     if (length(sch) != 0){
+      edges_per_school_w2[[sch]] <- append(edges_per_school_w2[[sch]], list(c(edges_w2$ID[i], edges_w2$Recipient[i]))) 
+     }
+   }
+}
+
+#removing the 0
+for (i in 1:length(school_ID_copyw2$School)){
+  edges_per_school_w2[[i]] <- edges_per_school_w2[[i]][-1]
+}
+
+#now creating a dataframe for each school
+for (i in 1:14){
+  school_name <- school_ID_copyw2$ID[i]
+  aux1 <- vector()
+  aux2 <- vector()
+  for (j in 1:length(edges_per_school_w2[[i]])){
+    aux1 <- c(aux1, toString(edges_per_school_w2[[i]][[j]][1]))
+    aux2 <- c(aux2, toString(edges_per_school_w2[[i]][[j]][2]))
+  }
+  
+  matrixaux <- matrix(c(aux1, aux2), ncol=2)
+  
+  file_name <- paste("Wave2_", school_name, sep='')
+  network <- graph_from_edgelist(matrixaux, directed = TRUE)
+  m <- as.data.frame(get.adjacency(network, sparse = FALSE))
+  
+  write.csv(m, paste('Y:/eco_redhead/LoRDIA/database/networks/',file_name,'.csv', sep=''), row.names = TRUE)
+}
+```
+
+Finally for wave 3
+```{r}
+#getting a list of schools present in wave 1 and their IDs
+school_ID_copyw3 <- filter(school_ID, ID %in% unique(ptable$School3) )
+#now dividing by schools
+#Each element of this list will be a list with the edges per school
+edges_per_school_w3 <- list()
+
+#adding a zero to not have an empty list
+for (i in 1:length(school_ID_copyw3$School)){
+  edges_per_school_w3[[i]] <- c(0)
+}
+#looking for school of ID and recipient. If they both have schools and they match, add the edge to the corresponding list.
+for (i in 1:length(edges_w3$ID)){
+   school.ID <- ptable$School3[which(ptable$ID == edges_w3$ID[i])]
+   school.recipient <- ptable$School3[which(ptable$ID == edges_w3$Recipient[i])]
+   if ((length(school.ID) != 0) && (length(school.recipient) != 0) && (school.ID == school.recipient)){
+     sch <- which(school_ID_copyw3$ID == school.ID)
+     if (length(sch) != 0){
+      edges_per_school_w3[[sch]] <- append(edges_per_school_w3[[sch]], list(c(edges_w3$ID[i], edges_w3$Recipient[i]))) 
+     }
+   }
+}
+
+#removing the 0
+for (i in 1:length(school_ID_copyw3$School)){
+  edges_per_school_w3[[i]] <- edges_per_school_w3[[i]][-1]
+}
+
+#now creating a dataframe for each school
+for (i in 1:14){
+  school_name <- school_ID_copyw3$ID[i]
+  aux1 <- vector()
+  aux2 <- vector()
+  for (j in 1:length(edges_per_school_w3[[i]])){
+    aux1 <- c(aux1, toString(edges_per_school_w3[[i]][[j]][1]))
+    aux2 <- c(aux2, toString(edges_per_school_w3[[i]][[j]][2]))
+  }
+  
+  matrixaux <- matrix(c(aux1, aux2), ncol=2)
+  
+  file_name <- paste("Wave3_", school_name, sep='')
+  network <- graph_from_edgelist(matrixaux, directed = TRUE)
+  m <- as.data.frame(get.adjacency(network, sparse = FALSE))
+  
+  write.csv(m, paste('Y:/eco_redhead/LoRDIA/database/networks/',file_name,'.csv', sep=''), row.names = TRUE)
+}
+```
+
+
+

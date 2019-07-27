@@ -1,0 +1,5 @@
+"0","setwd('Y:/eco_redhead/LoRDIA')"
+"2","The working directory was changed to Y:/eco_redhead/LoRDIA inside a notebook chunk. The working directory will be reset when the chunk is finished running. Use the knitr root.dir option in the setup chunk to change the working directory for notebook chunks."
+"0","library(tidyverse, purrr)"
+"0","df <- read.csv('Inputs/master_datafile_190408.csv', encoding = ""UTF-8"") #encoding = UTF-8 or something like that. encoding part to read swedish symbols. Omit for now"
+"0","df_original <-  df"

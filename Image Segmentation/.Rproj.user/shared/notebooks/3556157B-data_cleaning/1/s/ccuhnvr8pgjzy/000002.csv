@@ -1,0 +1,1 @@
+"0","#sample_school_check1 <- kamsc1[sample(nrow(df), 180) , ]"

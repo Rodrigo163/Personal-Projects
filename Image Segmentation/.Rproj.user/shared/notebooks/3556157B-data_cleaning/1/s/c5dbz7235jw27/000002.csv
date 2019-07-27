@@ -1,0 +1,6 @@
+"0","kamsc1 <- data.frame(ID=ptable$ID, V1_E_Skola=ptable$School1, V1_E_Klass=df_original$V1_E_Klass, select(df_original, starts_with('V1_E_Kam')))"
+"0","kamsc2 <- data.frame(ID=ptable$ID, V2_E_Skola=ptable$School2, V2_E_Klass=df_original$V2_E_Klass, select(df_original, starts_with('V2_E_Kam')))"
+"0","kamsc3 <- data.frame(ID=ptable$ID, V3_E_Skola=ptable$School3, V3_E_Klass=df_original$V3_E_Klass, select(df_original, starts_with('V3_E_Kam')))"
+"0","write.csv(kamsc1, 'Y:/eco_redhead/LoRDIA/database/kam_school_class1.csv', row.names = FALSE)"
+"0","write.csv(kamsc2, 'Y:/eco_redhead/LoRDIA/database/kam_school_class2.csv', row.names = FALSE)"
+"0","write.csv(kamsc3, 'Y:/eco_redhead/LoRDIA/database/kam_school_class3.csv', row.names = FALSE)"

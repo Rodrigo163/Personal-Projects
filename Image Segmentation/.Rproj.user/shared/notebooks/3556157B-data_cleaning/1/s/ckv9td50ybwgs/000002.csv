@@ -1,0 +1,1 @@
+"0","indices <- which(duplicated(df$IDNew) ==  TRUE, arr.ind=TRUE)"

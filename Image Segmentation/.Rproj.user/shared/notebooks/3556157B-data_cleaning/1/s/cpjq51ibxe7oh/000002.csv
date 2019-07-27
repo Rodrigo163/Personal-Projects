@@ -1,0 +1,4 @@
+"0","#ptable$School1 <- df_original$V1_E_Skola"
+"0","#ptable$School2 <- df_original$V2_E_Skola"
+"0","#ptable$School3 <- df_original$V3_E_Skola"
+"0","#write.csv(ptable, 'Y:/eco_redhead/LoRDIA/database/people.csv', row.names = FALSE)"

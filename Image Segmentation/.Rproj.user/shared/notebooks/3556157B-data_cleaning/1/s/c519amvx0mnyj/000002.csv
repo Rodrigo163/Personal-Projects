@@ -1,0 +1,4 @@
+"0","#checking why 3rd wave has school short names that do not appear in the first wave (hul, hii, sko)"
+"0","#table(unique(df_original$V1_E_Skola))"
+"0","#table(unique(df_original$V2_E_Skola))"
+"0","#table(unique(df_original$V3_E_Skola))"

@@ -1,0 +1,6 @@
+"0","kam1 <- select(df,'ID', starts_with('V1_E_Kam'))"
+"0","kam2 <- select(df,'ID', starts_with('V2_E_Kam'))"
+"0","kam3 <- select(df,'ID', starts_with('V3_E_Kam'))"
+"0","write.csv(kam1, 'Y:/eco_redhead/LoRDIA/database/kam1.csv', row.names = FALSE)"
+"0","write.csv(kam2, 'Y:/eco_redhead/LoRDIA/database/kam2.csv', row.names = FALSE)"
+"0","write.csv(kam3, 'Y:/eco_redhead/LoRDIA/database/kam3.csv', row.names = FALSE)"

@@ -1,0 +1,6 @@
+"0","V1 <- select(df,'ID', contains('V1'))"
+"0","V2 <- select(df,'ID', contains('V2'))"
+"0","V3 <- select(df,'ID', contains('V3'), contains('3b'))"
+"0","write.csv(V1, 'Y:/eco_redhead/LoRDIA/database/V1.csv', row.names = FALSE)"
+"0","write.csv(V2, 'Y:/eco_redhead/LoRDIA/database/V2.csv', row.names = FALSE)"
+"0","write.csv(V3, 'Y:/eco_redhead/LoRDIA/database/V3.csv', row.names = FALSE)"

@@ -1,0 +1,33 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1564159097634.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "ACCF8A3B",
+    "lastKnownWriteTime" : 2050211948024,
+    "last_content_update" : 1564159097634,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "DA4E9580",
+        "caption" : "school_ID_copyw2",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=school_ID_copyw2&cache_key=DA4E9580",
+        "displayedObservations" : "14",
+        "environment" : "",
+        "expression" : "school_ID_copyw2",
+        "object" : "school_ID_copyw2",
+        "preview" : "0",
+        "totalObservations" : "14",
+        "variables" : "2"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}

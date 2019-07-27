@@ -1,0 +1,2 @@
+"0","people <- select(df, 'ID')"
+"0","#write.csv(people, 'Y:/eco_redhead/LoRDIA/database/people.csv', row.names = FALSE)"
