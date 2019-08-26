@@ -87,6 +87,11 @@ def greyoverlap(singles, backbones):
     greyoverlap = [np.where(backbones[i] == 1, -80, 0) + singles[i] for i in range(0, len(singles))]
     return greyoverlap
 
+def coordinates(backboneimage):
+    #the idea is to get first an arrays like [(x1,y1), (x2, y2), ...] from the boolean or binary output of the backbone function
+    locations = np.where(backboneimage ==True or backboneimage== 1)
+    coords = [[locations[0][i], locations[1][i]] for i in range(0, len(locations[0]))]
+
 def Run():
     file1 = fd.askopenfilename()
     global image_tinker
