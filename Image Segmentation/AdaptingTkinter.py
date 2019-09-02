@@ -89,8 +89,16 @@ def greyoverlap(singles, backbones):
 
 def coordinates(backboneimage):
     #the idea is to get first an arrays like [(x1,y1), (x2, y2), ...] from the boolean or binary output of the backbone function
-    locations = np.where(backboneimage ==True or backboneimage== 1)
+    locations = np.where(test_output==True)
     coords = [[locations[0][i], locations[1][i]] for i in range(0, len(locations[0]))]
+    
+    #now to match JFils format
+    f = open("snake.txt", "w+")
+    f.write("#\r")
+    f.write("0\r")
+    for i in range(0, len(coords)):
+        f.write("1\t"+ str(i) + "\t" + "%d\t" % (coords[i][0]) + "%d\t" % (coords[i][1]) + "0\r")
+    f.close()
 
 def Run():
     file1 = fd.askopenfilename()
