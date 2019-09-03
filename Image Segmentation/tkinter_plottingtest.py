@@ -78,7 +78,44 @@ def show_image():
     label = tk.Label(image=photo,width=400, height=400)
     label.image = photo # keep a reference!
     label.grid(row=1, column=1)
+
+
+def analyse():
+    #label, box, singlify, backbone and greyoverlap all in one
+    labels, nobjects = ndi.label(multi_final)
+    boxes = ndi.find_objects(labels)
+    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
+    singles =  singlify(objects)
+    backbones = backbone(singles)
+    global finals
+    finals = greyoverlap(singles, backbones)
     
+    #plotting
+    global track
+    track =0 
+    global fig
+    fig = Figure(figsize=(5, 4), dpi=100)
+    a = fig.add_subplot(111, frameon=False)
+    a.imshow(finals[track])
+    canvas = FigureCanvasTkAgg(fig, master=figures_menu)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=track, column=0)
+    canvas.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Snake", command=save_figure)
+    save_figure_button.grid(row=track, column=1)
+    #skip_figure_button = tk.Button(figures_menu, text="Skip Snake", command = skip_figure)
+    #skip_figure_button.grid(row=track, column=2)
+    
+tracking = 0
+
+def update_track():
+    global tracking
+    tracking = tracking +1
+    track_button = tk.Button(figures_menu, text="track : "+ str(tracking), command=update_track)
+    track_button.grid(row=4, column=0)
+    
+    
+
 def open_file():
     #users selects a file and the image is displayed
     global file1
@@ -90,11 +127,34 @@ def open_file():
     image_label.grid(row=1, column=1)
 
 def save_figure():
-    file2save = fig  
+    labels, nobjects = ndi.label(multi_final)
+    boxes = ndi.find_objects(labels)
+    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
+    singles =  singlify(objects)
+    backbones = backbone(singles)
+    global finals
+    finals = greyoverlap(singles, backbones)
+    
+    #getting fig
+    global fig
+    fig = Figure(figsize=(5, 4), dpi=100)
+    a = fig.add_subplot(111, frameon=False)
+    a.imshow(finals[track])
+    
+    file2save=fig
     file2save = fd.asksaveasfile(mode='w', defaultextension='.png')
     file2save_2 = file2save.name
     fig.savefig(str(file2save_2)) 
     
+    #updating fig 
+    track=track+1
+    fig = Figure(figsize=(5, 4), dpi=100)
+    a = fig.add_subplot(111, frameon=False)
+    a.imshow(finals[track])
+    canvas = FigureCanvasTkAgg(fig, master=figures_menu)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=track, column=0)
+    canvas.mpl_connect("key_press_event", on_key_press)
     
 def pre_processing_dark():    
     #thresholding, masking, filtering
@@ -110,6 +170,7 @@ def pre_processing_dark():
     global multi_final
     multi_final = mask_median
     
+    global fig
     fig = Figure(figsize=(5, 4), dpi=100)
     a = fig.add_subplot(111, frameon=False)
     a.imshow(multi_final)
@@ -118,26 +179,7 @@ def pre_processing_dark():
     canvas.get_tk_widget().grid(row=1, column=2)
     canvas.mpl_connect("key_press_event", on_key_press)
 
-def analyse():
-    #label, box, singlify, backbone and greyoverlap all in one
-    labels, nobjects = ndi.label(multi_final)
-    boxes = ndi.find_objects(labels)
-    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
-    singles =  singlify(objects)
-    backbones = backbone(singles)
-    finals = greyoverlap(singles, backbones)
-    
-    #plotting
-    figure_menu = tk.Frame(root)
-    fig = Figure(figsize=(5, 4), dpi=100)
-    a = fig.add_subplot(111, frameon=False)
-    a.imshow(finals[5])
-    canvas = FigureCanvasTkAgg(fig, master=figure_menu)
-    canvas.draw()
-    canvas.get_tk_widget().grid(row=0, column=0)
-    canvas.mpl_connect("key_press_event", on_key_press)
-    save_figure_button = tk.Button(figure_menu, text="Export Snake", command=save_figure)
-    save_figure_button.grid(row=0, column=1)
+
     
     
     
@@ -145,17 +187,24 @@ root = tk.Tk()
 root.wm_title("Embedding in Tk")
 root.minsize(500,500)
 
-openfile_button= tk.Button(root, text="Open file", command=open_file)
+file_preproc_menu = tk.Frame(root)
+file_preproc_menu.grid(row = 0, column=0)
+
+figures_menu = tk.Frame(root)
+figures_menu.grid(row=0, column=1)
+
+openfile_button= tk.Button(file_preproc_menu, text="Open file", command=open_file)
 openfile_button.grid(row=0, column=0)
 
-prepro_button= tk.Button(root, text="preprocess image", command=pre_processing_dark)
+prepro_button= tk.Button(file_preproc_menu, text="preprocess image", command=pre_processing_dark)
 prepro_button.grid(row=1, column=0)
 
-start_analysis_button = tk.Button(root, text="Start Analysis", command=analyse)
+start_analysis_button = tk.Button(file_preproc_menu, text="Start Analysis", command=analyse)
 start_analysis_button.grid(row=2, column=0)
     
-    
-    
+track_button = tk.Button(figures_menu, text="track : 0", command=update_track)
+track_button.grid(row=4, column=0)
+
     
 def on_key_press(event):
     print("you pressed {}".format(event.key))
@@ -169,8 +218,8 @@ def _quit():
                     # Fatal Python Error: PyEval_RestoreThread: NULL tstate
 
 
-quit_button = tk.Button(master=root, text="Quit", command=_quit)
-quit_button.grid(row=5, column=0)
+quit_button = tk.Button(file_preproc_menu, text="Quit", command=_quit)
+quit_button.grid(row=3, column=0)
 
 tk.mainloop()
 # If you put root.destroy() here, it will cause an error if the window is
