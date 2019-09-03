@@ -57,24 +57,24 @@ def pre_processing_dark(multi):
     
     return multi_final
 
-def singlify(list_of_objects, n):
-    for object in list_of_objects:
-        #first part is to get labels and boxes 
-        labels, nobs = ndi.label(object)
+def singlify(list_of_objects):
+    for single_object in list_of_objects:
+        #first part is to get labels and boxes on each single object
+        labels, nobs = ndi.label(single_object)
         boxes = ndi.find_objects(labels)
 
         #if there is only one object then no need to modify the picture
-        if len(boxes)>1:
+        if nobs>1: #if we have two or more objects 
             #Then we have to compare their size and get the index of the biggest one
-            obs = [np.array(object[boxes[i]]) for i in range(0,nobs-1)]
+            obs = [np.array(single_object[boxes[i]]) for i in range(0,nobs)]
             obs_sizes = [ob.shape[0]*ob.shape[1] for ob in obs]
             n = int(np.where(obs_sizes == np.max(obs_sizes))[0])
 
             #now follows the mask that will filter everything but the biggest
 
-            for i in range(0,n-1):
+            for i in range(0,n):
                 if i != n:
-                    object[boxes[i]].fill(0)
+                    single_object[boxes[i]].fill(0)
     return list_of_objects 
 
 def backbone(objects):

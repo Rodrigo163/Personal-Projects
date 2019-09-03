@@ -19,7 +19,48 @@ import scipy.ndimage as ndi
 import math
 
 
+def singlify(list_of_objects):
+    for single_object in list_of_objects:
+        #first part is to get labels and boxes on each single object
+        labels, nobs = ndi.label(single_object)
+        boxes = ndi.find_objects(labels)
 
+        #if there is only one object then no need to modify the picture
+        if nobs>1: #if we have two or more objects 
+            #Then we have to compare their size and get the index of the biggest one
+            obs = [np.array(single_object[boxes[i]]) for i in range(0,nobs)]
+            obs_sizes = [ob.shape[0]*ob.shape[1] for ob in obs]
+            n = int(np.where(obs_sizes == np.max(obs_sizes))[0])
+
+            #now follows the mask that will filter everything but the biggest
+
+            for i in range(0,nobs):
+                if i != n:
+                    single_object[boxes[i]].fill(0)
+    return list_of_objects 
+
+def backbone(objects):
+    binaries = [np.where(ob > 0, 1, 0) for ob in objects]
+    backbones = [skel(binary) for binary in binaries]
+    binary_backbones = [np.where(ob ==True, 1, 0) for ob in backbones]
+    return binary_backbones
+
+def greyoverlap(singles, backbones):
+    greyoverlap = [np.where(backbones[i] == 1, -80, 0) + singles[i] for i in range(0, len(singles))]
+    return greyoverlap
+
+def coordinates(backboneimage):
+    #the idea is to get first an arrays like [(x1,y1), (x2, y2), ...] from the boolean or binary output of the backbone function
+    locations = np.where(test_output==True)
+    coords = [[locations[0][i], locations[1][i]] for i in range(0, len(locations[0]))]
+    
+    #now to match JFils format
+    f = open("snake.txt", "w+")
+    f.write("#\r")
+    f.write("0\r")
+    for i in range(0, len(coords)):
+        f.write("1\t"+ str(i) + "\t" + "%d\t" % (coords[i][0]) + "%d\t" % (coords[i][1]) + "0\r")
+    f.close()
 
 def show_plot():
     fig = Figure(figsize=(5, 4), dpi=100)
@@ -47,6 +88,13 @@ def open_file():
     image_label= tk.Label(master=root, image =im)
     image_label.image= im
     image_label.grid(row=1, column=1)
+
+def save_figure():
+    file2save = fig  
+    file2save = fd.asksaveasfile(mode='w', defaultextension='.png')
+    file2save_2 = file2save.name
+    fig.savefig(str(file2save_2)) 
+    
     
 def pre_processing_dark():    
     #thresholding, masking, filtering
@@ -59,30 +107,56 @@ def pre_processing_dark():
     mask_erosion = ndi.binary_erosion(mask_dilate, iterations=2)
     mask_closed = ndi.binary_closing(mask_erosion, iterations=3)
     mask_median = filters.median(mask_closed, disk(2.5))
+    global multi_final
     multi_final = mask_median
     
     fig = Figure(figsize=(5, 4), dpi=100)
-    fig.add_subplot(111).imshow(multi_final)
+    a = fig.add_subplot(111, frameon=False)
+    a.imshow(multi_final)
     canvas = FigureCanvasTkAgg(fig, master=root)
     canvas.draw()
     canvas.get_tk_widget().grid(row=1, column=2)
     canvas.mpl_connect("key_press_event", on_key_press)
+
+def analyse():
+    #label, box, singlify, backbone and greyoverlap all in one
+    labels, nobjects = ndi.label(multi_final)
+    boxes = ndi.find_objects(labels)
+    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
+    singles =  singlify(objects)
+    backbones = backbone(singles)
+    finals = greyoverlap(singles, backbones)
+    
+    #plotting
+    figure_menu = tk.Frame(root)
+    fig = Figure(figsize=(5, 4), dpi=100)
+    a = fig.add_subplot(111, frameon=False)
+    a.imshow(finals[5])
+    canvas = FigureCanvasTkAgg(fig, master=figure_menu)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=0, column=0)
+    canvas.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figure_menu, text="Export Snake", command=save_figure)
+    save_figure_button.grid(row=0, column=1)
+    
+    
     
 root = tk.Tk()
 root.wm_title("Embedding in Tk")
 root.minsize(500,500)
+
 openfile_button= tk.Button(root, text="Open file", command=open_file)
 openfile_button.grid(row=0, column=0)
 
-plot2_button= tk.Button(root, text="change plot", command=show_diff_plot)
-plot2_button.grid(row=2, column=0)
-
-image_button= tk.Button(root, text="display image", command=show_image)
-image_button.grid(row=3, column=0)
-
 prepro_button= tk.Button(root, text="preprocess image", command=pre_processing_dark)
-prepro_button.grid(row=4, column=0)
+prepro_button.grid(row=1, column=0)
 
+start_analysis_button = tk.Button(root, text="Start Analysis", command=analyse)
+start_analysis_button.grid(row=2, column=0)
+    
+    
+    
+    
 def on_key_press(event):
     print("you pressed {}".format(event.key))
     key_press_handler(event, canvas)
