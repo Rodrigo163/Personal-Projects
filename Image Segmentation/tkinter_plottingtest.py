@@ -103,8 +103,8 @@ def analyse():
     canvas.mpl_connect("key_press_event", on_key_press)
     save_figure_button = tk.Button(figures_menu, text="Export Snake", command=save_figure)
     save_figure_button.grid(row=track, column=1)
-    #skip_figure_button = tk.Button(figures_menu, text="Skip Snake", command = skip_figure)
-    #skip_figure_button.grid(row=track, column=2)
+    skip_figure_button = tk.Button(figures_menu, text="Skip Snake")
+    skip_figure_button.grid(row=track, column=2)
     
 tracking = 0
 
