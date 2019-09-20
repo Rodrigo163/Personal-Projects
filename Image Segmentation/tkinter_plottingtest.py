@@ -16,8 +16,20 @@ from skimage.morphology import skeletonize as skel
 from skimage.morphology import disk
 import imageio as iio
 import scipy.ndimage as ndi
+from scipy import interpolate
+from scipy.interpolate import Rbf, InterpolatedUnivariateSpline
 import math
 
+def chunkIt(seq, num):
+    avg = len(seq) / float(num)
+    out = []
+    last = 0.0
+
+    while last < len(seq):
+        out.append(seq[int(last):int(last + avg)])
+        last += avg
+
+    return out
 
 def singlify(list_of_objects):
     for single_object in list_of_objects:
@@ -49,18 +61,24 @@ def greyoverlap(singles, backbones):
     greyoverlap = [np.where(backbones[i] == 1, -80, 0) + singles[i] for i in range(0, len(singles))]
     return greyoverlap
 
-def coordinates(backboneimage):
-    #the idea is to get first an arrays like [(x1,y1), (x2, y2), ...] from the boolean or binary output of the backbone function
-    locations = np.where(test_output==True)
-    coords = [[locations[0][i], locations[1][i]] for i in range(0, len(locations[0]))]
-    
-    #now to match JFils format
-    f = open("snake.txt", "w+")
-    f.write("#\r")
-    f.write("0\r")
-    for i in range(0, len(coords)):
-        f.write("1\t"+ str(i) + "\t" + "%d\t" % (coords[i][0]) + "%d\t" % (coords[i][1]) + "0\r")
-    f.close()
+track =0
+finals = np.array([])
+backbones = np.array([])
+fig = Figure(figsize=(5, 4), dpi=100)
+figpix = Figure(figsize=(3, 3), dpi=100)
+figpoly = Figure(figsize=(3.5, 3.5), dpi=100)
+figspl = Figure(figsize=(3.5, 3.5), dpi=100)
+nfilaments=0
+x = np.array([])
+y = np.array([])
+xpoly = np.array([])
+ypoly = np.array([])
+xspl= np.array([])
+yspl= np.array([])
+coordspix = np.array([])
+coordspoly = np.array([])
+coordsspl = np.array([])
+locations = np.array([])
 
 def show_plot():
     fig = Figure(figsize=(5, 4), dpi=100)
@@ -80,81 +98,22 @@ def show_image():
     label.grid(row=1, column=1)
 
 
-def analyse():
-    #label, box, singlify, backbone and greyoverlap all in one
-    labels, nobjects = ndi.label(multi_final)
-    boxes = ndi.find_objects(labels)
-    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
-    singles =  singlify(objects)
-    backbones = backbone(singles)
-    global finals
-    finals = greyoverlap(singles, backbones)
-    
-    #plotting
-    global track
-    track =0 
-    global fig
-    fig = Figure(figsize=(5, 4), dpi=100)
-    a = fig.add_subplot(111, frameon=False)
-    a.imshow(finals[track])
-    canvas = FigureCanvasTkAgg(fig, master=figures_menu)
-    canvas.draw()
-    canvas.get_tk_widget().grid(row=track, column=0)
-    canvas.mpl_connect("key_press_event", on_key_press)
-    save_figure_button = tk.Button(figures_menu, text="Export Snake", command=save_figure)
-    save_figure_button.grid(row=track, column=1)
-    skip_figure_button = tk.Button(figures_menu, text="Skip Snake")
-    skip_figure_button.grid(row=track, column=2)
-    
-tracking = 0
 
-def update_track():
-    global tracking
-    tracking = tracking +1
-    track_button = tk.Button(figures_menu, text="track : "+ str(tracking), command=update_track)
-    track_button.grid(row=4, column=0)
-    
-    
 
 def open_file():
     #users selects a file and the image is displayed
     global file1
     file1 = fd.askopenfilename()
     global im
-    im = ImageTk.PhotoImage(file = file1)
-    image_label= tk.Label(master=root, image =im)
-    image_label.image= im
-    image_label.grid(row=1, column=1)
+    #im = ImageTk.PhotoImage(file = file1)
+    im = Image.open("%s"%(file1))
+    im = im.resize((400,400), Image.ANTIALIAS)
+    im.save("im.ppm", "ppm")
+    im = ImageTk.PhotoImage(file ='im.ppm')
+    image_label = tk.Label(master=file_preproc_menu, image =im)
+    image_label.image= im #keeping reference
+    image_label.grid(row=0, column=1)
 
-def save_figure():
-    labels, nobjects = ndi.label(multi_final)
-    boxes = ndi.find_objects(labels)
-    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
-    singles =  singlify(objects)
-    backbones = backbone(singles)
-    global finals
-    finals = greyoverlap(singles, backbones)
-    
-    #getting fig
-    global fig
-    fig = Figure(figsize=(5, 4), dpi=100)
-    a = fig.add_subplot(111, frameon=False)
-    a.imshow(finals[track])
-    
-    file2save=fig
-    file2save = fd.asksaveasfile(mode='w', defaultextension='.png')
-    file2save_2 = file2save.name
-    fig.savefig(str(file2save_2)) 
-    
-    #updating fig 
-    track=track+1
-    fig = Figure(figsize=(5, 4), dpi=100)
-    a = fig.add_subplot(111, frameon=False)
-    a.imshow(finals[track])
-    canvas = FigureCanvasTkAgg(fig, master=figures_menu)
-    canvas.draw()
-    canvas.get_tk_widget().grid(row=track, column=0)
-    canvas.mpl_connect("key_press_event", on_key_press)
     
 def pre_processing_dark():    
     #thresholding, masking, filtering
@@ -174,13 +133,433 @@ def pre_processing_dark():
     fig = Figure(figsize=(5, 4), dpi=100)
     a = fig.add_subplot(111, frameon=False)
     a.imshow(multi_final)
-    canvas = FigureCanvasTkAgg(fig, master=root)
+    
+    canvas = FigureCanvasTkAgg(fig, master=file_preproc_menu)
     canvas.draw()
-    canvas.get_tk_widget().grid(row=1, column=2)
+    canvas.get_tk_widget().grid(row=1, column=1)
     canvas.mpl_connect("key_press_event", on_key_press)
 
-
+def save_pixfigure():
+    global track
+    global finals
+    global fig
+    global nfilaments
+    global backbones
+    global figpix
+    global figpoly
+    global figspl
+    global x
+    global y
+    global xploy
+    global ypoly
+    global xspl
+    global yspl
+    global coordspix
+    global coordspoly
+    global coordsspl
+    global locations
     
+    #====================================================================================
+    #GETTING PIX OUTPUT
+    coordsoutput = np.copy(coordspix)
+    #writting pix file
+    s = open("snake"+str(track)+".txt", "w+")
+    s.write("#\rX\rX\rX\rX\rX\rX\rX\rX\rX\r0\r")
+    for i in range(0, len(coordsoutput)):
+        s.write("1\t"+ str(i) + "\t" + "%5.2f \t" % (coordsoutput[i][0]) + "%5.3f \t" % float((coordsoutput[i][1])) + "0\r")
+    s.close()
+    #empty elongation file, necessary to run Matlab script
+    e = open("elongation"+str(track)+".txt", "w+")
+    e.write("#\r#\r#\r#\r#\r#\r#\r#\r#\r\r\r#Snake Data\r#\r1 0")
+    e.close()
+    #====================================================================================
+    #UPDATE TRACKERS AND COORDSPIX
+    track=track+1
+    nfilaments = nfilaments -1
+    locations = np.where(backbones[track]==True)
+    coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    #====================================================================================
+    #GETTING new COORDSPOLY
+    xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
+    ypoly = [coordspix[i][1] for i in range(0, len(coordspix))]
+    #poly coeffs
+    z = np.polyfit(xpoly,ypoly,10)
+    #poly function
+    p = np.poly1d(z)
+    ypolyfinal = p(xpoly)
+    #====================================================================================
+    #GETTING new COORDSSPL
+    
+    xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
+    yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
+    coordsspl = np.copy(coordspix)
+    n_chunks = 2
+    x_chunks = chunkIt(xspl, n_chunks)
+    y_chunks = chunkIt(yspl, n_chunks)
+    ysplfinal = []
+    
+    for i in range(0,n_chunks):
+        tck = interpolate.splrep(x_chunks[i], y_chunks[i], s=13)
+        ynew = interpolate.splev(x_chunks[i], tck, der=0)
+        ysplfinal.extend(ynew)
+    
+    #updating output coords
+    for i in range(0, len(coordsspl)):
+        coordsspl[i].astype(float)
+        coordsspl[i][1] = ysplfinal[i]
+    xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
+    yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
+
+    #====================================================================================
+    #UPDATE PLOTS
+
+    #update figpix
+    apix = figpix.add_subplot(111, frameon=False)
+    apix.imshow(finals[track])
+    canvaspix = FigureCanvasTkAgg(figpix, master=figures_menu)
+    canvaspix.draw()
+    canvaspix.get_tk_widget().grid(row=0, column=0)
+    canvaspix.mpl_connect("key_press_event", on_key_press)
+    counter_button = tk.Button(figures_menu, text=str(nfilaments)+" remaining filaments")
+    counter_button.grid(row=0, column=3)
+    
+    #update figpoly
+    figpoly = Figure(figsize=(3, 3), dpi=100)
+    apoly = figpoly.add_subplot(111, frameon=False)
+    apoly.plot(xpoly, ypoly, 'ro', xpoly, ypolyfinal, 'b', markersize=1)
+    canvaspoly = FigureCanvasTkAgg(figpoly, master=figures_menu)
+    canvaspoly.draw()
+    canvaspoly.get_tk_widget().grid(row=1, column=0)
+    canvaspoly.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Polynomial Snake", command=save_polyfigure)
+    save_figure_button.grid(row=1, column=1)
+    
+    #update figspl
+    figspl = Figure(figsize=(3, 3), dpi=100)
+    aspl = figspl.add_subplot(111, frameon=False)
+    aspl.plot(xspl, yspl, 'ro', xspl, ysplfinal, 'b', markersize=1)
+    canvasspl = FigureCanvasTkAgg(figspl, master=figures_menu)
+    canvasspl.draw()
+    canvasspl.get_tk_widget().grid(row=2, column=0)
+    canvasspl.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Spline Snake", command=save_polyfigure)
+    save_figure_button.grid(row=2, column=1)
+    
+def save_polyfigure():
+    global track
+    global finals
+    global fig
+    global nfilaments
+    global backbones
+    global figpix
+    global figpoly
+    global figspl
+    global x
+    global y
+    global xploy
+    global ypoly
+    global xspl
+    global yspl
+    global coordspix
+    global coordspoly
+    global coordsspl
+    global locations
+    
+    #====================================================================================
+    #GETTING POLY OUTPUT
+    coordsoutput = np.copy(coordspoly)
+    #writting pix file
+    s = open("snake"+str(track)+".txt", "w+")
+    s.write("#\rX\rX\rX\rX\rX\rX\rX\rX\rX\r0\r")
+    for i in range(0, len(coordsoutput)):
+        s.write("1\t"+ str(i) + "\t" + "%5.2f \t" % (coordsoutput[i][0]) + "%5.3f \t" % float((coordsoutput[i][1])) + "0\r")
+    s.close()
+    #empty elongation file, necessary to run Matlab script
+    e = open("elongation"+str(track)+".txt", "w+")
+    e.write("#\r#\r#\r#\r#\r#\r#\r#\r#\r\r\r#Snake Data\r#\r1 0")
+    e.close()
+    #====================================================================================
+    #UPDATE TRACKERS AND COORDSPIX
+    track=track+1
+    nfilaments = nfilaments -1
+    locations = np.where(backbones[track]==True)
+    coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    #====================================================================================
+    #GETTING new COORDSPOLY
+    xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
+    ypoly = [coordspix[i][1] for i in range(0, len(coordspix))]
+    #poly coeffs
+    z = np.polyfit(xpoly,ypoly,10)
+    #poly function
+    p = np.poly1d(z)
+    ypolyfinal = p(xpoly)
+    #====================================================================================
+    #GETTING new COORDSSPL
+    
+    xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
+    yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
+    coordsspl = np.copy(coordspix)
+    n_chunks = 2
+    x_chunks = chunkIt(xspl, n_chunks)
+    y_chunks = chunkIt(yspl, n_chunks)
+    ysplfinal = []
+    
+    for i in range(0,n_chunks):
+        tck = interpolate.splrep(x_chunks[i], y_chunks[i], s=13)
+        ynew = interpolate.splev(x_chunks[i], tck, der=0)
+        ysplfinal.extend(ynew)
+    
+    #updating output coords
+    for i in range(0, len(coordsspl)):
+        coordsspl[i].astype(float)
+        coordsspl[i][1] = ysplfinal[i]
+    xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
+    yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
+
+    #====================================================================================
+    #UPDATE PLOTS
+
+    #update figpix
+    apix = figpix.add_subplot(111, frameon=False)
+    apix.imshow(finals[track])
+    canvaspix = FigureCanvasTkAgg(figpix, master=figures_menu)
+    canvaspix.draw()
+    canvaspix.get_tk_widget().grid(row=0, column=0)
+    canvaspix.mpl_connect("key_press_event", on_key_press)
+    counter_button = tk.Button(figures_menu, text=str(nfilaments)+" remaining filaments")
+    counter_button.grid(row=0, column=3)
+    
+    #update figpoly
+    figpoly = Figure(figsize=(3, 3), dpi=100)
+    apoly = figpoly.add_subplot(111, frameon=False)
+    apoly.plot(xpoly, ypoly, 'ro', xpoly, ypolyfinal, 'b', markersize=1)
+    canvaspoly = FigureCanvasTkAgg(figpoly, master=figures_menu)
+    canvaspoly.draw()
+    canvaspoly.get_tk_widget().grid(row=1, column=0)
+    canvaspoly.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Polynomial Snake", command=save_polyfigure)
+    save_figure_button.grid(row=1, column=1)
+    
+    #update figspl
+    figspl = Figure(figsize=(3, 3), dpi=100)
+    aspl = figspl.add_subplot(111, frameon=False)
+    aspl.plot(xspl, yspl, 'ro', xspl, ysplfinal, 'b', markersize=1)
+    canvasspl = FigureCanvasTkAgg(figspl, master=figures_menu)
+    canvasspl.draw()
+    canvasspl.get_tk_widget().grid(row=2, column=0)
+    canvasspl.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Spline Snake", command=save_polyfigure)
+    save_figure_button.grid(row=2, column=1)
+    
+
+def save_splfigure():
+    global track
+    global finals
+    global fig
+    global nfilaments
+    global backbones
+    global figpix
+    global figpoly
+    global figspl
+    global x
+    global y
+    global xploy
+    global ypoly
+    global xspl
+    global yspl
+    global coordspix
+    global coordspoly
+    global coordsspl
+    global locations
+    
+    #====================================================================================
+    #GETTING SPL OUTPUT
+    coordsoutput = np.copy(coordsspl)
+    #writting pix file
+    s = open("snake"+str(track)+".txt", "w+")
+    s.write("#\rX\rX\rX\rX\rX\rX\rX\rX\rX\r0\r")
+    for i in range(0, len(coordsoutput)):
+        s.write("1\t"+ str(i) + "\t" + "%5.2f \t" % (coordsoutput[i][0]) + "%5.3f \t" % float((coordsoutput[i][1])) + "0\r")
+    s.close()
+    #empty elongation file, necessary to run Matlab script
+    e = open("elongation"+str(track)+".txt", "w+")
+    e.write("#\r#\r#\r#\r#\r#\r#\r#\r#\r\r\r#Snake Data\r#\r1 0")
+    e.close()
+    #====================================================================================
+    #UPDATE TRACKERS AND COORDSPIX
+    track=track+1
+    nfilaments = nfilaments -1
+    locations = np.where(backbones[track]==True)
+    coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    #====================================================================================
+    #GETTING new COORDSPOLY
+    xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
+    ypoly = [coordspix[i][1] for i in range(0, len(coordspix))]
+    #poly coeffs
+    z = np.polyfit(xpoly,ypoly,10)
+    #poly function
+    p = np.poly1d(z)
+    ypolyfinal = p(xpoly)
+    #====================================================================================
+    #GETTING new COORDSSPL
+    
+    xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
+    yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
+    coordsspl = np.copy(coordspix)
+    n_chunks = 2
+    x_chunks = chunkIt(xspl, n_chunks)
+    y_chunks = chunkIt(yspl, n_chunks)
+    ysplfinal = []
+    
+    for i in range(0,n_chunks):
+        tck = interpolate.splrep(x_chunks[i], y_chunks[i], s=13)
+        ynew = interpolate.splev(x_chunks[i], tck, der=0)
+        ysplfinal.extend(ynew)
+    
+    #updating output coords
+    for i in range(0, len(coordsspl)):
+        coordsspl[i].astype(float)
+        coordsspl[i][1] = ysplfinal[i]
+    xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
+    yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
+
+    #====================================================================================
+    #UPDATE PLOTS
+
+    #update figpix
+    apix = figpix.add_subplot(111, frameon=False)
+    apix.imshow(finals[track])
+    canvaspix = FigureCanvasTkAgg(figpix, master=figures_menu)
+    canvaspix.draw()
+    canvaspix.get_tk_widget().grid(row=0, column=0)
+    canvaspix.mpl_connect("key_press_event", on_key_press)
+    counter_button = tk.Button(figures_menu, text=str(nfilaments)+" remaining filaments")
+    counter_button.grid(row=0, column=3)
+    
+    #update figpoly
+    figpoly = Figure(figsize=(3, 3), dpi=100)
+    apoly = figpoly.add_subplot(111, frameon=False)
+    apoly.plot(xpoly, ypoly, 'ro', xpoly, ypolyfinal, 'b', markersize=1)
+    canvaspoly = FigureCanvasTkAgg(figpoly, master=figures_menu)
+    canvaspoly.draw()
+    canvaspoly.get_tk_widget().grid(row=1, column=0)
+    canvaspoly.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Polynomial Snake", command=save_polyfigure)
+    save_figure_button.grid(row=1, column=1)
+    
+    #update figspl
+    figspl = Figure(figsize=(3, 3), dpi=100)
+    aspl = figspl.add_subplot(111, frameon=False)
+    aspl.plot(xspl, yspl, 'ro', xspl, ysplfinal, 'b', markersize=1)
+    canvasspl = FigureCanvasTkAgg(figspl, master=figures_menu)
+    canvasspl.draw()
+    canvasspl.get_tk_widget().grid(row=2, column=0)
+    canvasspl.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Spline Snake", command=save_polyfigure)
+    save_figure_button.grid(row=2, column=1)
+    
+
+
+
+def analyse():
+    global track
+    global finals
+    global fig
+    global nfilaments
+    global backbones
+    global figpix
+    global figpoly
+    global figspl
+    global x
+    global y
+    global xploy
+    global ypoly
+    global xspl
+    global yspl
+    global coordspix
+    global coordspoly
+    global coordsspl
+    global locations
+    
+    #label, box, singlify, backbone and greyoverlap all in one
+    labels, nobjects = ndi.label(multi_final)
+    boxes = ndi.find_objects(labels)
+    objects = [np.array(multi_final[boxes[i]]) for i in range(0,nobjects-1) if (np.array(multi_final[boxes[i]]).shape[0]*np.array(multi_final[boxes[i]]).shape[1] > 600)]
+    singles =  singlify(objects)
+    backbones = backbone(singles)
+    finals = greyoverlap(singles, backbones)
+    
+    
+    nfilaments = len(finals)-1
+    
+    #plotting figpix and saving coordspix
+    locations = np.where(backbones[track]==True)
+   
+    coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    apix = figpix.add_subplot(111, frameon=False)
+    apix.imshow(finals[track])
+    canvaspix = FigureCanvasTkAgg(figpix, master=figures_menu)
+    canvaspix.draw()
+    canvaspix.get_tk_widget().grid(row=0, column=0)
+    canvaspix.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Snake", command=save_pixfigure)
+    save_figure_button.grid(row=0, column=1)
+    skip_figure_button = tk.Button(figures_menu, text="Skip Snake")
+    skip_figure_button.grid(row=0, column=2)
+    counter_button = tk.Button(figures_menu, text=str(nfilaments)+" remaining filaments")
+    counter_button.grid(row=0, column=3)
+    
+    
+    #plotting figpoly and saving coordspoly
+    xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
+    ypoly = [coordspix[i][1] for i in range(0, len(coordspix))]
+    #poly coeffs
+    z = np.polyfit(xpoly,ypoly,10)
+    #poly function
+    p = np.poly1d(z)
+    ypolyfinal = p(xpoly)
+    
+    apoly = figpoly.add_subplot(111, frameon=False)
+    apoly.plot(xpoly, ypoly, 'ro', xpoly, ypolyfinal, 'b', markersize=1)
+    canvaspoly = FigureCanvasTkAgg(figpoly, master=figures_menu)
+    canvaspoly.draw()
+    canvaspoly.get_tk_widget().grid(row=1, column=0)
+    canvaspoly.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Polynomial Snake", command=save_polyfigure)
+    save_figure_button.grid(row=1, column=1)
+    coordspoly = [np.array([xpoly[i], p(xpoly[i])]) for i in range(0, len(xpoly))]
+    
+    
+    #plotting figspl
+    xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
+    yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
+    coordsspl = np.copy(coordspix)
+    n_chunks = 2
+    x_chunks = chunkIt(xspl, n_chunks)
+    y_chunks = chunkIt(yspl, n_chunks)
+    ysplfinal = []
+    
+    for i in range(0,n_chunks):
+        tck = interpolate.splrep(x_chunks[i], y_chunks[i], s=13)
+        ynew = interpolate.splev(x_chunks[i], tck, der=0)
+        ysplfinal.extend(ynew)
+    
+    #updating output coords
+    for i in range(0, len(coordsspl)):
+        coordsspl[i].astype(float)
+        coordsspl[i][1] = ysplfinal[i]
+    xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
+    yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
+    
+    
+    aspl = figspl.add_subplot(111, frameon=False)
+    aspl.plot(xspl, yspl, 'ro', xspl, yspl, 'b', markersize=1)
+    canvasspl = FigureCanvasTkAgg(figspl, master=figures_menu)
+    canvasspl.draw()
+    canvasspl.get_tk_widget().grid(row=2, column=0)
+    canvasspl.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Spline Snake", command=save_splfigure)
+    save_figure_button.grid(row=2, column=1)
     
     
 root = tk.Tk()
@@ -202,8 +581,6 @@ prepro_button.grid(row=1, column=0)
 start_analysis_button = tk.Button(file_preproc_menu, text="Start Analysis", command=analyse)
 start_analysis_button.grid(row=2, column=0)
     
-track_button = tk.Button(figures_menu, text="track : 0", command=update_track)
-track_button.grid(row=4, column=0)
 
     
 def on_key_press(event):
@@ -224,3 +601,6 @@ quit_button.grid(row=3, column=0)
 tk.mainloop()
 # If you put root.destroy() here, it will cause an error if the window is
 # closed with the window manager.
+
+#further developments
+# show pre-processed image without axes
