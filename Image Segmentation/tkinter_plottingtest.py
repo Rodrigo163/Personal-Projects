@@ -5,10 +5,13 @@ from matplotlib.backends.backend_tkagg import (
 from matplotlib.backend_bases import key_press_handler
 from matplotlib.figure import Figure
 import numpy as np
+import matplotlib
+import os
 from PIL import Image, ImageTk
 from tkinter import filedialog as fd
 import skimage.data as data
 import skimage.segmentation as seg
+from sklearn.preprocessing import normalize
 import skimage.filters as filters
 import skimage.draw as draw
 import skimage.color as color
@@ -105,11 +108,11 @@ def open_file():
     global file1
     file1 = fd.askopenfilename()
     global im
-    #im = ImageTk.PhotoImage(file = file1)
-    im = Image.open("%s"%(file1))
+    im = Image.open(file1)
     im = im.resize((400,400), Image.ANTIALIAS)
-    im.save("im.ppm", "ppm")
-    im = ImageTk.PhotoImage(file ='im.ppm')
+    name = file1.split("/")[-1].split(".")[0]+'.PNG'
+    im.save(name)
+    im = ImageTk.PhotoImage(file = name)
     image_label = tk.Label(master=file_preproc_menu, image =im)
     image_label.image= im #keeping reference
     image_label.grid(row=0, column=1)
@@ -139,6 +142,128 @@ def pre_processing_dark():
     canvas.get_tk_widget().grid(row=1, column=1)
     canvas.mpl_connect("key_press_event", on_key_press)
 
+def pre_processing_general():    
+    #thresholding, masking, filtering
+    global multi
+    multi = file1
+    multi = iio.imread(file1)
+    multi = color.rgb2gray(multi)
+    multi = normalize(multi, norm='l1')
+    multi = np.where(multi < np.percentile(multi, 95),0 , multi)
+    multi = ndi.binary_dilation(multi, iterations=2)
+    multi = ndi.binary_erosion(multi, iterations=1)
+    multi = ndi.binary_opening(multi, iterations=1)
+    
+    global multi_final
+    multi_final = multi
+    
+    global fig
+    fig = Figure(figsize=(5, 4), dpi=100)
+    a = fig.add_subplot(111, frameon=False)
+    a.imshow(multi_final)
+    
+    canvas = FigureCanvasTkAgg(fig, master=file_preproc_menu)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=1, column=1)
+    canvas.mpl_connect("key_press_event", on_key_press)
+
+
+def skip_filament():
+    global track
+    global finals
+    global fig
+    global nfilaments
+    global backbones
+    global figpix
+    global figpoly
+    global figspl
+    global x
+    global y
+    global xploy
+    global ypoly
+    global xspl
+    global yspl
+    global coordspix
+    global coordspoly
+    global coordsspl
+    global locations
+    #====================================================================================
+    #UPDATE TRACKERS AND COORDSPIX
+    track=track+1
+    nfilaments = nfilaments -1
+    locations = np.where(backbones[track]==True)
+    coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    ordered = sorted(coordspix, key=lambda k: [k[1], k[0]])
+    ordered = [np.flip(x) for x in ordered]
+    coordspix = np.copy(ordered)
+    #====================================================================================
+    #GETTING new COORDSPOLY
+    xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
+    ypoly = [coordspix[i][1] for i in range(0, len(coordspix))]
+    #poly coeffs
+    z = np.polyfit(xpoly,ypoly,10)
+    #poly function
+    p = np.poly1d(z)
+    ypolyfinal = p(xpoly)
+    #====================================================================================
+    #GETTING new COORDSSPL
+    
+    xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
+    yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
+    coordsspl = np.copy(coordspix)
+    n_chunks = 5
+    x_chunks = chunkIt(xspl, n_chunks)
+    y_chunks = chunkIt(yspl, n_chunks)
+    ysplfinal = []
+    
+    for i in range(0,n_chunks):
+        tck = interpolate.splrep(x_chunks[i], y_chunks[i], s=13)
+        ynew = interpolate.splev(x_chunks[i], tck, der=0)
+        ysplfinal.extend(ynew)
+    
+    #updating output coords
+    for i in range(0, len(coordsspl)):
+        if math.isnan(i):
+            coordsspl[i].astype(float)
+            coordsspl[i][1] = ysplfinal[i]
+    xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
+    yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
+
+    #====================================================================================
+    #UPDATE PLOTS
+
+    #update figpix
+    apix = figpix.add_subplot(111, frameon=False)
+    apix.imshow(finals[track])
+    canvaspix = FigureCanvasTkAgg(figpix, master=figures_menu)
+    canvaspix.draw()
+    canvaspix.get_tk_widget().grid(row=0, column=0)
+    canvaspix.mpl_connect("key_press_event", on_key_press)
+    counter_button = tk.Button(figures_menu, text=str(nfilaments)+" remaining filaments")
+    counter_button.grid(row=0, column=3)
+    
+    #update figpoly
+    figpoly = Figure(figsize=(3, 3), dpi=100)
+    apoly = figpoly.add_subplot(111, frameon=False)
+    apoly.plot(xpoly, ypoly, 'ro', xpoly, ypolyfinal, 'b', markersize=1)
+    canvaspoly = FigureCanvasTkAgg(figpoly, master=figures_menu)
+    canvaspoly.draw()
+    canvaspoly.get_tk_widget().grid(row=1, column=0)
+    canvaspoly.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Polynomial Snake", command=save_polyfigure)
+    save_figure_button.grid(row=1, column=1)
+    
+    #update figspl
+    figspl = Figure(figsize=(3, 3), dpi=100)
+    aspl = figspl.add_subplot(111, frameon=False)
+    aspl.plot(xspl, yspl, 'ro', xspl, ysplfinal, 'b', markersize=1)
+    canvasspl = FigureCanvasTkAgg(figspl, master=figures_menu)
+    canvasspl.draw()
+    canvasspl.get_tk_widget().grid(row=2, column=0)
+    canvasspl.mpl_connect("key_press_event", on_key_press)
+    save_figure_button = tk.Button(figures_menu, text="Export Spline Snake", command=save_polyfigure)
+    save_figure_button.grid(row=2, column=1)
+    
 def save_pixfigure():
     global track
     global finals
@@ -178,6 +303,9 @@ def save_pixfigure():
     nfilaments = nfilaments -1
     locations = np.where(backbones[track]==True)
     coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    ordered = sorted(coordspix, key=lambda k: [k[1], k[0]])
+    ordered = [np.flip(x) for x in ordered]
+    coordspix = np.copy(ordered)
     #====================================================================================
     #GETTING new COORDSPOLY
     xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
@@ -193,7 +321,7 @@ def save_pixfigure():
     xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
     yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
     coordsspl = np.copy(coordspix)
-    n_chunks = 2
+    n_chunks = 5
     x_chunks = chunkIt(xspl, n_chunks)
     y_chunks = chunkIt(yspl, n_chunks)
     ysplfinal = []
@@ -205,8 +333,9 @@ def save_pixfigure():
     
     #updating output coords
     for i in range(0, len(coordsspl)):
-        coordsspl[i].astype(float)
-        coordsspl[i][1] = ysplfinal[i]
+        if math.isnan(i):
+            coordsspl[i].astype(float)
+            coordsspl[i][1] = ysplfinal[i]
     xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
     yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
 
@@ -284,6 +413,9 @@ def save_polyfigure():
     nfilaments = nfilaments -1
     locations = np.where(backbones[track]==True)
     coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    ordered = sorted(coordspix, key=lambda k: [k[1], k[0]])
+    ordered = [np.flip(x) for x in ordered]
+    coordspix = np.copy(ordered)
     #====================================================================================
     #GETTING new COORDSPOLY
     xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
@@ -299,7 +431,7 @@ def save_polyfigure():
     xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
     yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
     coordsspl = np.copy(coordspix)
-    n_chunks = 2
+    n_chunks = 5
     x_chunks = chunkIt(xspl, n_chunks)
     y_chunks = chunkIt(yspl, n_chunks)
     ysplfinal = []
@@ -311,8 +443,9 @@ def save_polyfigure():
     
     #updating output coords
     for i in range(0, len(coordsspl)):
-        coordsspl[i].astype(float)
-        coordsspl[i][1] = ysplfinal[i]
+        if math.isnan(i):
+            coordsspl[i].astype(float)
+            coordsspl[i][1] = ysplfinal[i]
     xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
     yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
 
@@ -391,6 +524,9 @@ def save_splfigure():
     nfilaments = nfilaments -1
     locations = np.where(backbones[track]==True)
     coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    ordered = sorted(coordspix, key=lambda k: [k[1], k[0]])
+    ordered = [np.flip(x) for x in ordered]
+    coordspix = np.copy(ordered)
     #====================================================================================
     #GETTING new COORDSPOLY
     xpoly = [coordspix[i][0] for i in range(0, len(coordspix))]
@@ -406,7 +542,7 @@ def save_splfigure():
     xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
     yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
     coordsspl = np.copy(coordspix)
-    n_chunks = 2
+    n_chunks = 5
     x_chunks = chunkIt(xspl, n_chunks)
     y_chunks = chunkIt(yspl, n_chunks)
     ysplfinal = []
@@ -418,8 +554,9 @@ def save_splfigure():
     
     #updating output coords
     for i in range(0, len(coordsspl)):
-        coordsspl[i].astype(float)
-        coordsspl[i][1] = ysplfinal[i]
+        if math.isnan(i):
+            coordsspl[i].astype(float)
+            coordsspl[i][1] = ysplfinal[i]
     xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
     yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
 
@@ -494,8 +631,11 @@ def analyse():
     
     #plotting figpix and saving coordspix
     locations = np.where(backbones[track]==True)
-   
     coordspix = [np.array([locations[0][i], locations[1][i]]) for i in range(0, len(locations[0]))]
+    ordered = sorted(coordspix, key=lambda k: [k[1], k[0]])
+    ordered = [np.flip(x) for x in ordered]
+    coordspix = np.copy(ordered)
+    
     apix = figpix.add_subplot(111, frameon=False)
     apix.imshow(finals[track])
     canvaspix = FigureCanvasTkAgg(figpix, master=figures_menu)
@@ -504,7 +644,7 @@ def analyse():
     canvaspix.mpl_connect("key_press_event", on_key_press)
     save_figure_button = tk.Button(figures_menu, text="Export Snake", command=save_pixfigure)
     save_figure_button.grid(row=0, column=1)
-    skip_figure_button = tk.Button(figures_menu, text="Skip Snake")
+    skip_figure_button = tk.Button(figures_menu, text="Skip Snake", command=skip_filament)
     skip_figure_button.grid(row=0, column=2)
     counter_button = tk.Button(figures_menu, text=str(nfilaments)+" remaining filaments")
     counter_button.grid(row=0, column=3)
@@ -534,7 +674,7 @@ def analyse():
     xspl = [coordspix[i][0] for i in range(0, len(coordspix))]
     yspl = [coordspix[i][1] for i in range(0, len(coordspix))]
     coordsspl = np.copy(coordspix)
-    n_chunks = 2
+    n_chunks = 5
     x_chunks = chunkIt(xspl, n_chunks)
     y_chunks = chunkIt(yspl, n_chunks)
     ysplfinal = []
@@ -546,8 +686,9 @@ def analyse():
     
     #updating output coords
     for i in range(0, len(coordsspl)):
-        coordsspl[i].astype(float)
-        coordsspl[i][1] = ysplfinal[i]
+        if math.isnan(i):
+            coordsspl[i].astype(float)
+            coordsspl[i][1] = ysplfinal[i]
     xspl = [coordsspl[i][0] for i in range(0, len(coordsspl))]
     yspl = [coordsspl[i][1] for i in range(0, len(coordsspl))]
     
@@ -575,11 +716,14 @@ figures_menu.grid(row=0, column=1)
 openfile_button= tk.Button(file_preproc_menu, text="Open file", command=open_file)
 openfile_button.grid(row=0, column=0)
 
-prepro_button= tk.Button(file_preproc_menu, text="preprocess image", command=pre_processing_dark)
-prepro_button.grid(row=1, column=0)
+preprogeneral_button= tk.Button(file_preproc_menu, text="Preprocess image", command=pre_processing_general)
+preprogeneral_button.grid(row=1, column=0)
+
+preprodark_button= tk.Button(file_preproc_menu, text="Preprocess dark image", command=pre_processing_dark)
+preprodark_button.grid(row=2, column=0)
 
 start_analysis_button = tk.Button(file_preproc_menu, text="Start Analysis", command=analyse)
-start_analysis_button.grid(row=2, column=0)
+start_analysis_button.grid(row=3, column=0)
     
 
     
@@ -596,7 +740,7 @@ def _quit():
 
 
 quit_button = tk.Button(file_preproc_menu, text="Quit", command=_quit)
-quit_button.grid(row=3, column=0)
+quit_button.grid(row=4, column=0)
 
 tk.mainloop()
 # If you put root.destroy() here, it will cause an error if the window is
